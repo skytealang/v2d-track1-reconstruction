@@ -61,7 +61,7 @@ def main():
     predictor = build_sam2_video_predictor_low_mem(
         config_file=identity['sam_config'], ckpt_path=args.checkpoint, device='cuda')
     predictor.fill_hole_area = 0
-    temporary = output.with_suffix('.partial')
+    temporary = output.with_suffix(f'.{os.getpid()}.partial')
     areas = []
     seen = set()
     capture = cv2.VideoCapture(str(source))
