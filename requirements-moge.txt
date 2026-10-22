@@ -1,0 +1,10 @@
+-r requirements.txt
+torch==2.5.1
+torchvision==0.20.1
+gradio==5.49.1
+moderngl==5.13.0
+matplotlib==3.11.2
+einops==0.8.2
+imageio==2.38.1
+click==8.5.0
+opencv-python==4.11.0.86

@@ -1,0 +1,15 @@
+numpy==1.26.4
+scipy==1.15.3
+h5py==3.14.0
+opencv-python-headless==4.11.0.86
+trimesh==4.7.4
+huggingface-hub==0.36.0
+requests==2.32.5
+beautifulsoup4==4.14.2
+pandas==2.3.3
+pyarrow==21.0.0
+kaggle>=2.0
+kagglesdk
+fast_simplification>=0.1
+pytest==8.4.2
+pypdf==6.1.3

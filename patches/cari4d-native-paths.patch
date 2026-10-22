@@ -1,0 +1,23 @@
+diff --git a/reconstruction/modules/v2d_cari4d/lib/run_inference.py b/reconstruction/modules/v2d_cari4d/lib/run_inference.py
+index 6df0c50..1858ffd 100644
+--- a/reconstruction/modules/v2d_cari4d/lib/run_inference.py
++++ b/reconstruction/modules/v2d_cari4d/lib/run_inference.py
+@@ -18,7 +18,8 @@ from v2d.cari4d.lib.download_weights import CARI4D_CHECKPOINT_RELATIVE_PATH, CAR
+ 
+ 
+ SOURCE_ROOT = Path(__file__).resolve().parent / "cari4d"
+-SAM3D_SOURCE_ROOT = Path("/workspace/v2d_sam3d_body/lib")
++SAM3D_SOURCE_ROOT = Path(os.environ.get("SAM3D_BODY_ROOT", str(Path(__file__).resolve().parents[2] / "v2d_sam3d_body/lib")))
++FOUNDATIONPOSE_SOURCE_ROOT = Path(os.environ.get("FOUNDATIONPOSE_SOURCE_ROOT", str(Path(__file__).resolve().parents[2] / "v2d_foundation_pose/lib/FoundationPose")))
+ PIPELINE_SCHEMA = "v2d.cari4d.wild_inference.v1"
+ 
+ 
+@@ -103,7 +104,7 @@ def run_inference(video_path: str, mask_h5_path: str, object_mesh_path: str, wei
+         download_weights(weights_path)
+     weights = _required_weights(weights_path)
+     env = os.environ.copy()
+-    env.update({"PYTHONPATH": os.pathsep.join((str(SOURCE_ROOT), str(SAM3D_SOURCE_ROOT), str(Path("/workspace/v2d_foundation_pose/lib/FoundationPose")), env.get("PYTHONPATH", ""))), "HF_HOME": str(weights_path / "hf_home"), "TORCH_HOME": str(weights_path / "sam3d_body/torch_home"), "SAM3D_BODY_ROOT": str(SAM3D_SOURCE_ROOT), "MHR_ASSETS_ROOT": str(weights_path / "sam3d_body"), "FOUNDATIONPOSE_WEIGHTS_DIR": str(weights_path / "foundationpose/nvlabs_pytorch"), "OPENCV_IO_ENABLE_OPENEXR": "1", "PYOPENGL_PLATFORM": "egl", "HDF5_USE_FILE_LOCKING": "FALSE", "PYTHONUNBUFFERED": "1"})
++    env.update({"PYTHONPATH": os.pathsep.join((str(SOURCE_ROOT), str(SAM3D_SOURCE_ROOT), str(FOUNDATIONPOSE_SOURCE_ROOT), env.get("PYTHONPATH", ""))), "HF_HOME": str(weights_path / "hf_home"), "TORCH_HOME": str(weights_path / "sam3d_body/torch_home"), "SAM3D_BODY_ROOT": str(SAM3D_SOURCE_ROOT), "MHR_ASSETS_ROOT": str(weights_path / "sam3d_body"), "FOUNDATIONPOSE_WEIGHTS_DIR": str(weights_path / "foundationpose/nvlabs_pytorch"), "OPENCV_IO_ENABLE_OPENEXR": "1", "PYOPENGL_PLATFORM": "egl", "HDF5_USE_FILE_LOCKING": "FALSE", "PYTHONUNBUFFERED": "1"})
+     raw_depth = output_root / "depth/moge2/raw.npy"
+     depth_intrinsics = output_root / "depth/moge2/intrinsics.pkl"
+     depth_report = output_root / "depth/moge2/depth_report.json"

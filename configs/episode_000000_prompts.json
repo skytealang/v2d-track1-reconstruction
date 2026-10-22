@@ -1,0 +1,8 @@
+{
+  "provenance": "Manually selected from the released Track 1 RGB frame 0 at 1536x1152; no external asset or calibration used",
+  "episode": 0,
+  "prompts": [
+    {"frame_index": 0, "object_id": 0, "box": [456, 390, 617, 943]},
+    {"frame_index": 0, "object_id": 1, "points": [[638, 805], [720, 780], [806, 815], [724, 839], [720, 808]], "labels": [1, 1, 1, 1, 0]}
+  ]
+}

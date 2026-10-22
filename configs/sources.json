@@ -1,0 +1,23 @@
+{
+  "official_repository": "https://github.com/nvidia-isaac/video_to_data",
+  "official_revision": "7eb9721088615fe9201634a6be5cf48b049d1090",
+  "dataset_repository": "nvidia/video_to_data_challenge",
+  "dataset_revision": "5f68335f3acc802033d1e80728c1633197521de8",
+  "allowed_dataset_prefix": "track_1/",
+  "moge_revision": "925b8ed835a7a9cdb7578ba15c658a0afc969030",
+  "moge_checkpoint_revision": "b135031bae30b5ac2ae141a0e68717795ce38340",
+  "moge_checkpoint_sha256": "280741fd09bc3f403ccff9967784c2a391b52d2c0742ae3efdb21d9f90cc1a01",
+  "utils3d_revision": "3fab839f0be9931dac7c8488eb0e1600c236e183",
+  "pipeline_revision": "866f059d2a05cde05e4a52211ec5051fd5f276d6",
+  "cari4d_checkpoint_revision": "1f7287ac6fd5f72c30ce2222fb345a3e7d779fc9",
+  "cari4d_checkpoint_sha256": "78ff5cb874dd012a272382e3f2d8bc11226d5b7d0ecc739a60fbb4a97a5a5ba3",
+  "public_mhr_model_sha256": "352e271a6c42729c68554ceaea0c955e866970160c31e35506d782dc0f7377bc",
+  "public_mhr_release": "https://github.com/facebookresearch/MHR/releases/tag/v1.0.1",
+  "sam2_revision": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+  "sam2_small_checkpoint_url": "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_small.pt",
+  "sam2_small_checkpoint_sha256": "6d1aa6f30de5c92224f8172114de081d104bbd23dd9dc5c58996f0cad5dc4d38",
+  "nvdiffrast_revision": "253ac4fcea7de5f396371124af597e6cc957bfae",
+  "pytorch3d_tag": "v0.7.9",
+  "mediapipe_version": "0.10.21",
+  "mediapipe_pose_heavy_sha256": "59e42d71bcd44cbdbabc419f0ff76686595fd265419566bd4009ef703ea8e1fe"
+}

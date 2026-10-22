@@ -1,0 +1,15 @@
+.envs/
+external/
+data/
+checkpoints/
+artifacts/
+logs/
+__pycache__/
+*.pyc
+.env
+.secrets/
+*.token
+kaggle.json
+.pytest_cache/
+core
+core.*
