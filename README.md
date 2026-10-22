@@ -38,11 +38,23 @@
 
 ```bash
 .envs/v2d/bin/python scripts/refit_public_humans.py
-.envs/v2d/bin/python scripts/audit_predictions.py --episodes artifacts/episodes_v2
+.envs/v2d/bin/python scripts/audit_predictions.py --episodes artifacts/episodes_v2 --output artifacts/prediction_audit_v2.json
 .envs/v2d/bin/python scripts/pack_public_candidate.py --episodes artifacts/episodes_v2 --commit "$V2D_COMMIT_URL" --output artifacts/submissions/track1_v2.parquet
 ```
 
-`refit_public_humans.py` 只重跑MHR拟合和组装，复用Track1预测关键点、深度、物体网格/轨迹；不读取真值。人参数在 `artifacts/public_human_v2/`，状态、命令、时长与显存在 `artifacts/public_human_v2_status.json`。每段初始化误差大于1e-5m会明确失败。第二版正在全量计算，评分前不能宣称官方指标改善。
+`refit_public_humans.py` 只重跑MHR拟合和组装，复用Track1预测关键点、深度、物体网格/轨迹；不读取真值。人参数在 `artifacts/public_human_v2/`，状态、命令、时长与显存在 `artifacts/public_human_v2_status.json`。每段初始化误差大于1e-5m会明确失败。第二版全量已完成：批处理378.704秒，峰值690.93MiB；全量审计与官方打包通过，包SHA256为 `8da4bede539c27e3e0666b011f9cd909e5c83b023ba2fce359fad0047d5f1027`，所用代码commit为 `187b02a3a68521219057ddcd4c721ab32db8fc4a`。
+
+第二份提交的五项评分均COMPLETE，均优于初版，当前保留为最佳公开候选。`artifacts/checkpoints/best_public/` 包含全部30段NPZ/网格/报告、提交Parquet、receipt与SHA256清单 `manifest.json`；初版仍在 `artifacts/checkpoints/first_scored_public/`。这些大型结果被.gitignore排除，不推送至代码仓库。
+
+| 指标 | v1 | v2 | 降幅 | v2 Submission ID |
+|---|---:|---:|---:|---:|
+| CD-H cm | 37.67795 | 33.44210 | 11.24% | 57514516 |
+| CD-O cm | 151.42816 | 142.51805 | 5.88% | 57514521 |
+| ACC-H cm/frame² | 2.63350 | 2.49748 | 5.16% | 57514531 |
+| ACC-O cm/frame² | 0.31251 | 0.29662 | 5.08% | 57514534 |
+| PEN cm | 0.01007 | 0.00941 | 6.55% | 57514536 |
+
+这仅是两个已评分版本间的公开成绩比较，尚未核实综合排名。下一项主要问题是物体形状、单目尺度与遮挡漂移；均值人体形状、未拟合的手指与接触也仍限制精度。没有根据小PEN推断接触正确。
 
 ## 实际环境
 

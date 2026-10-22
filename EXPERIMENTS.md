@@ -113,3 +113,23 @@
 同设置首段对照：均790帧、200步、batch64、13个对应关节；修复前 `artifacts/public_human/episode_000000/run.json`，修复后 `artifacts/public_human_v2/episode_000000/run.json`。预测3D关节平均残差0.1779439→0.0375731m，归一化2D重投影残差0.0377352→0.0101523；初始化髋部最大误差4.8147e-7m。修复后85.811秒、峰值690.85MiB。真实对照图 `artifacts/public_run_summary/episode0_root_fix_comparison.jpg`。这些残差只表明与同一组预测观测更一致，尚不能代替Kaggle准确率。
 
 全量命令 `.envs/v2d/bin/python -u scripts/refit_public_humans.py > logs/public-human-v2-all.log 2>&1`，使用GPU0/1/2/3/4/5/7，复用物体结果，在 `artifacts/episodes_v2/` 组装，不覆盖初版。状态 `artifacts/public_human_v2_status.json` 逐段记录初始化检查、真实命令、时长、峰值。修复后现有17项测试通过（0.35秒）；全量和第二份评分进行中。
+
+第二版全量完成：378.704秒并发墙钟，拟合成功阶段用时合计2125.587秒（包含已先行计算的首段85.811秒，不等于批处理墙钟），峰值690.93MiB。30段最大初始化髋部误差4.8834e-7m。按帧数加权的预测关键点残差0.183969→0.040437m，归一化重投影残差0.043327→0.012419。对照的episode0为同设置13关节试验，不是首份评分使用的12关节版本；因此官方v1/v2成绩对照还包含首段的对应关节/迭代配置差异。详细JSON `artifacts/root_fix_ablation.json`。
+
+另以公开MHR实际骨架前向检查4个不同旋转种子、合成目标髋部位置，最大位置误差1.1921e-7m，CPU0.557秒，无挑战GT，输出 `artifacts/mhr_root_initialization_roundtrip.json`。
+
+严格审计 `.envs/v2d/bin/python scripts/audit_predictions.py --episodes artifacts/episodes_v2 --output artifacts/prediction_audit_v2.json`：30/30、16563帧通过。第二版官方打包8.642秒，输出 `artifacts/submissions/track1_v2.parquet`，740780行、10430161字节，SHA256 `8da4bede539c27e3e0666b011f9cd909e5c83b023ba2fce359fad0047d5f1027`，真实代码commit `187b02a3a68521219057ddcd4c721ab32db8fc4a`。官方dry-run通过，各项4次剩余。第二次上传使用独立receipt `artifacts/submissions/v2-public-receipt.json`，评分等待中；第一份成功包另备份到 `artifacts/checkpoints/first_scored_public/`。
+
+## 第二份实际评分与最优归档
+
+第二次实际命令：`HTTPS_PROXY=http://127.0.0.1:17890 HTTP_PROXY=http://127.0.0.1:17890 .envs/v2d/bin/python -u external/submission_kit/v2d_submission_kit/submit/v2d_submit.py artifacts/submissions/track1_v2.parquet --track track_1 -m "Correct MHR hip initialization 187b02a" --wait --receipt artifacts/submissions/v2-public-receipt.json`。五项全部COMPLETE，无评分错误，日志 `logs/submission-public-v2-upload.log`。
+
+| 指标 | v1 | v2 | 公开分数降幅 | v2 ID |
+|---|---:|---:|---:|---:|
+| CD-H cm | 37.67795 | 33.44210 | 11.24% | 57514516 |
+| CD-O cm | 151.42816 | 142.51805 | 5.88% | 57514521 |
+| ACC-H cm/frame² | 2.63350 | 2.49748 | 5.16% | 57514531 |
+| ACC-O cm/frame² | 0.31251 | 0.29662 | 5.08% | 57514534 |
+| PEN cm | 0.01007 | 0.00941 | 6.55% | 57514536 |
+
+v2在五项测得的公开指标上均优于v1，因此完整归档到 `artifacts/checkpoints/best_public/`，包括30段NPZ/网格/报告、Parquet、打包报告和receipt，93个文件SHA256记录于 `manifest.json`。初版不删除。仍未核实综合排名；物体142.5cm误差说明远未达到高质量重建目标。后续优先研究预测掩码/深度锚定以修复物体漂移、改进完整网格与尺度、人体时序与接触约束。

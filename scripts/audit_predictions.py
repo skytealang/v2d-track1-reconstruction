@@ -16,6 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--episodes', type=Path, default=Path('artifacts/episodes'))
     parser.add_argument('--allow-incomplete', action='store_true')
+    parser.add_argument('--output', type=Path, default=Path('artifacts/prediction_audit.json'))
     args = parser.parse_args()
     dataset = json.loads(Path('artifacts/data_audit.json').read_text())['episodes']
     sample = pd.read_parquet(ROOT / 'external/submission_kit/v2d_submission_kit/data/track_1_sample_submission.parquet')
@@ -48,11 +49,13 @@ def main():
         records.append({'episode': episode, 'frames': count, 'vertices': len(mesh.vertices), 'faces': len(mesh.faces),
                         'watertight': bool(mesh.is_watertight), 'volume_m3': float(mesh.volume),
                         'object_translation_acceleration_rms_m_per_frame_squared': translation_acceleration})
-    result = {'complete_episodes': len(records), 'expected_episodes': len(expected_episodes),
+    result = {'episodes_directory': str(args.episodes.resolve()),
+              'complete_episodes': len(records), 'expected_episodes': len(expected_episodes),
               'frames': sum(record['frames'] for record in records), 'missing_episodes': missing,
               'finite_arrays_and_rotations_valid': True, 'records': records,
               'note': 'Structural validation and prediction statistics only. No hidden reference or official accuracy score.'}
-    Path('artifacts/prediction_audit.json').write_text(json.dumps(result, indent=2))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(result, indent=2))
     print(json.dumps({key: value for key, value in result.items() if key != 'records'}, indent=2))
     if missing and not args.allow_incomplete:
         raise SystemExit(2)
