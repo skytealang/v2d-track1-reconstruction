@@ -8,11 +8,26 @@
 
 ```bash
 .envs/v2d/bin/python scripts/run_seg_large.py
+.envs/v2d/bin/python scripts/run_seg_large.py --episodes 17 18 19
 CUDA_VISIBLE_DEVICES=0 .envs/cari4d/bin/python scripts/run_masks.py --prompts artifacts/seg_large/prompts/episode_000012.json --checkpoint checkpoints/sam2-large/sam2.1_hiera_large.pt --sam-config configs/sam2.1/sam2.1_hiera_l.yaml --bidirectional --output artifacts/seg_large/masks
 .envs/v2d/bin/python scripts/render_mask_video.py --episode 12 --masks-dir artifacts/seg_large/masks --output artifacts/seg_large/episode_000012_masks_h264.mp4
 ```
 
+17–19 的复核配置增加了顶部、滚筒头、细柄的前景点和桌面/手部的背景点。18、19 另在 `crop` 指定的 RGB 区域运行 Large，保留原有全画面人体掩码，将局部物体掩码映射回原分辨率。`scripts/refine_mask_crop.py` 由批处理自动调用，临时视频使用无损 H.264 并在完成后删除。提示点、裁剪坐标和原始 RGB 均可复现，未使用隐藏真值。批处理支持选择序列，修改配置后仅相应提示哈希失效并重算。
+
 清理清单 `artifacts/cleanup_manifest.json` 记录删除的过时试跑、失败跟踪和未评分候选；其有用 JSON 报告保留于 `artifacts/retired_reports/`。真实 Kaggle 评分包、最优归档、原视频、深度缓存及旧版掩码/预览保留。
+
+### 清洗分割后的重跑与提交
+
+`scripts/run_clean_batch.py` 将已复核的 Large 掩码接入全部下游步骤，独立输出到 `artifacts/clean_v3/`。它重算网格、MediaPipe Heavy 关键点、200 步 MHR 拟合、FoundationPose 和时序组装，复用相同 MoGe 2 深度缓存。每段记录输入掩码 SHA256、实际命令、耗时和返回码，已完成且哈希匹配的序列可恢复。只有整段 FoundationPose 少于两帧正轮廓重合时，才使用预测掩码/深度的平移锚定兜底；该修复另记在段报告，旋转仍有失败风险。此次对照因此不是严格的纯分割单变量实验。
+
+```bash
+.envs/v2d/bin/python scripts/run_clean_batch.py
+.envs/v2d/bin/python scripts/audit_predictions.py --episodes artifacts/clean_v3/episodes --output artifacts/clean_v3/audit.json
+.envs/v2d/bin/python scripts/pack_public_candidate.py --episodes artifacts/clean_v3/episodes --commit https://github.com/skytealang/v2d-track1-reconstruction/commit/REAL_SHA --output artifacts/submissions/track1_v3_clean.parquet
+```
+
+所有模型均使用当前已安装的对应版本：SAM 2.1 Large、MoGe 2、MediaPipe Heavy、MHR 和 FoundationPose。本次没有切回 SAM2 Small，也不把这些公开替代组件宣称为整体最优模型；物体网格仍是单目可见面近似，完整官方 CARI4D 尚未运行。
 
 - 已获取官方仓库，版本 `7eb9721088615fe9201634a6be5cf48b049d1090`，并解包、逐文件校验 Submission Kit。
 - 已创建 `.envs/v2d`：Python 3.11、PyTorch 2.5.1 / CUDA 12.4。`pip check` 通过。

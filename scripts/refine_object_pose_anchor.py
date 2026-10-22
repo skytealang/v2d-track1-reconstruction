@@ -20,11 +20,13 @@ def project(vertices, pose, k):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--episode', type=int, required=True)
+    parser.add_argument('--inputs', type=Path, default=Path('artifacts/inputs'))
     parser.add_argument('--poses', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--tracking-report', type=Path)
     args = parser.parse_args()
     sequence = f'episode_{args.episode:06d}'
-    inputs = Path('artifacts/inputs')
+    inputs = args.inputs
     mesh = trimesh.load(inputs / f'{sequence}_object.glb', force='mesh')
     vertices = np.asarray(mesh.vertices, np.float32)
     poses = np.load(args.poses).astype(np.float32)
@@ -77,6 +79,12 @@ def main():
               'mean_translation_delta_m': float(np.mean([row.get('translation_delta_m', 0) for row in diagnostics])),
               'source': str(args.poses), 'diagnostics': diagnostics}
     args.output.with_suffix('.json').write_text(json.dumps(report, indent=2))
+    if args.tracking_report:
+        tracking = json.loads(args.tracking_report.read_text())
+        assert tracking['frames'] == len(diagnostics)
+        tracking['translation_confidence'] = [float(row['anchored']) for row in diagnostics]
+        tracking['translation_source'] = 'predicted mask/depth median fallback; not silhouette IoU'
+        args.tracking_report.write_text(json.dumps(tracking, indent=2))
     print(json.dumps({k: v for k, v in report.items() if k != 'diagnostics'}, indent=2))
 
 

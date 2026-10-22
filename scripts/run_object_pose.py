@@ -23,6 +23,7 @@ from v2d.mesh.lib.mesh import Mesh
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--episode', type=int, default=0)
+    parser.add_argument('--inputs', type=Path, default=Path('artifacts/inputs'))
     parser.add_argument('--max-frames', type=int, default=16)
     parser.add_argument('--recover-iou', type=float, default=0.0)
     parser.add_argument('--recovery-interval', type=int, default=10)
@@ -32,7 +33,7 @@ def main():
     started = time.monotonic()
     torch.cuda.reset_peak_memory_stats()
     sequence = f'episode_{args.episode:06d}'
-    inputs = Path('artifacts/inputs')
+    inputs = args.inputs
     mesh = Mesh.load(str(inputs / f'{sequence}_object.glb'), force_mesh=True)
     tracker = FoundationPoseTracker(mesh, 'checkpoints/cari4d/foundationpose', backend='nvlabs_pytorch')
     capture = cv2.VideoCapture(str(inputs / f'{sequence}.0.color.mp4'))

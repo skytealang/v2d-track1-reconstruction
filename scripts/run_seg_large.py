@@ -1,3 +1,4 @@
+import argparse
 import concurrent.futures
 import hashlib
 import json
@@ -28,10 +29,16 @@ def run_worker(gpu, episodes):
                                 '--output', 'artifacts/seg_large/masks', '--overwrite'], env=environment,
                                stdout=log, stderr=subprocess.STDOUT, check=True)
             previous = json.loads(report.read_text())
+            annotations = json.loads(prompt_path.read_text())
+            if 'object_crop' in annotations and (not reused or previous['identity'].get('object_crop') != annotations['object_crop']):
+                subprocess.run(['.envs/cari4d/bin/python', 'scripts/refine_mask_crop.py', '--episode', str(episode)],
+                               env=environment, stdout=log, stderr=subprocess.STDOUT, check=True)
+                previous = json.loads(report.read_text())
+                reused = False
             assert previous['complete_video'] and previous['identity']['sam_config'].endswith('hiera_l.yaml')
             video = Path(f'artifacts/seg_large/{sequence}_masks_h264.mp4')
             valid = False
-            if reused and video.exists():
+            if reused and video.exists() and video.stat().st_mtime_ns >= report.stat().st_mtime_ns:
                 probe = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
                                         '-show_entries', 'stream=codec_name,nb_frames', '-of', 'json', str(video)],
                                        capture_output=True, text=True)
@@ -47,12 +54,17 @@ def run_worker(gpu, episodes):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--episodes', type=int, nargs='+', default=list(range(30)))
+    args = parser.parse_args()
+    assert args.episodes and len(set(args.episodes)) == len(args.episodes)
+    assert all(0 <= episode < 30 for episode in args.episodes)
     prompts_root = Path('artifacts/seg_large/prompts')
     prompts_root.mkdir(parents=True, exist_ok=True)
     Path('logs/seg_large').mkdir(parents=True, exist_ok=True)
     base = json.loads(Path('configs/public_baseline_prompts.json').read_text())
     corrections = json.loads(Path('configs/seg_large_corrections.json').read_text())['corrections']
-    for episode in range(30):
+    for episode in args.episodes:
         if episode == 0:
             annotations = json.loads(Path('configs/episode_000000_prompts.json').read_text())
         else:
@@ -66,21 +78,25 @@ def main():
             annotations = {'episode': episode, 'prompts': prompts, 'provenance': base['provenance']}
         if str(episode) in corrections:
             correction = corrections[str(episode)]
+            if 'crop' in correction:
+                annotations['object_crop'] = [value * 2 for value in correction['crop']]
             if 'first_points' in correction:
                 annotations['prompts'][1] = {'frame_index': 0, 'object_id': 1,
                                             'points': [[value * 2 for value in point] for point in correction['first_points']],
                                             'labels': correction['first_labels']}
-            annotations['prompts'].append({'frame_index': correction['frame'], 'object_id': 1,
-                                          'points': [[value * 2 for value in point] for point in correction['points']],
-                                          'labels': correction['labels']})
+            for keyframe in correction.get('keyframes', [correction]):
+                assert len(keyframe['points']) == len(keyframe['labels']) > 0
+                assert set(keyframe['labels']) <= {0, 1}
+                assert all(0 <= point[0] < 768 and 0 <= point[1] < 576 for point in keyframe['points'])
+                annotations['prompts'].append({'frame_index': keyframe['frame'], 'object_id': 1,
+                                              'points': [[value * 2 for value in point] for point in keyframe['points']],
+                                              'labels': keyframe['labels']})
         annotations['revision'] = 'sam21_large_rgb_review_v1'
         destination = prompts_root / f'episode_{episode:06d}.json'
-        if destination.exists():
-            assert json.loads(destination.read_text()) == annotations, f'Prompt identity differs: {destination}'
-        else:
+        if not destination.exists() or json.loads(destination.read_text()) != annotations:
             destination.write_text(json.dumps(annotations, indent=2))
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
-        futures = [pool.submit(run_worker, gpu, list(range(slot, 30, 3))) for slot, gpu in enumerate([0, 1, 2])]
+        futures = [pool.submit(run_worker, gpu, args.episodes[slot::3]) for slot, gpu in enumerate([0, 1, 2])]
         results = [row for future in futures for row in future.result()]
     Path('artifacts/seg_large/batch_report.json').write_text(json.dumps(results, indent=2))
     subprocess.run(['.envs/v2d/bin/python', 'scripts/review_segmentation.py'], check=True)

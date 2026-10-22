@@ -20,12 +20,13 @@ def main():
     parser.add_argument('--steps', type=int, default=300)
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--fit-head', action='store_true')
+    parser.add_argument('--landmarks-root', type=Path, default=Path('artifacts/pose_landmarks'))
     parser.add_argument('--output', type=Path, default=Path('artifacts/mhr_landmarks_smoke'))
     args = parser.parse_args()
     started = time.monotonic()
     args.output.mkdir(parents=True, exist_ok=True)
     sequence = f'episode_{args.episode:06d}'
-    source = np.load(f'artifacts/pose_landmarks/{sequence}/landmarks.npz')
+    source = np.load(args.landmarks_root / sequence / 'landmarks.npz')
     limit = min(len(source['image']), args.max_frames) if args.max_frames else len(source['image'])
     image = source['image'][:limit]
     world = source['world'][:limit]

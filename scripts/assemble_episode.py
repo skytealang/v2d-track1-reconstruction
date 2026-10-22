@@ -19,6 +19,7 @@ from v2dlb.mhr_submission import _rotations
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--episode', type=int, default=0)
+    parser.add_argument('--inputs', type=Path, default=Path('artifacts/inputs'))
     parser.add_argument('--human', type=Path, default=Path('artifacts/mhr_landmarks_full/human_params.npz'))
     parser.add_argument('--object', type=Path, default=Path('artifacts/object_pose_recovery'))
     parser.add_argument('--output', type=Path, default=Path('artifacts/episodes'))
@@ -38,11 +39,11 @@ def main():
         raise ValueError('Object poses must cover the complete video')
     _rotations(poses[:, :3, :3])
     report = json.loads((args.object / 'run.json').read_text())
-    confidence = np.asarray([row['silhouette_iou'] for row in report['observations']])
+    confidence = np.asarray(report.get('translation_confidence', [row['silhouette_iou'] for row in report['observations']]))
     if len(confidence) != expected:
         raise ValueError('Object confidence coverage mismatch')
     translation = optimize_translation(poses[:, :3, 3], confidence, smoothness=args.smoothness)
-    mesh_source = Path('artifacts/inputs') / f'{sequence}_object.glb'
+    mesh_source = args.inputs / f'{sequence}_object.glb'
     mesh = trimesh.load(mesh_source, force='mesh')
     if not mesh.is_watertight or mesh.area <= 0 or not np.isfinite(mesh.vertices).all():
         raise ValueError('Invalid reconstructed object mesh')

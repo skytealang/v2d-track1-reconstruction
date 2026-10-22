@@ -1,3 +1,4 @@
+import argparse
 import json
 import sys
 import time
@@ -15,6 +16,9 @@ from v2d_challenge.dataset import Track1Dataset
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--inputs', type=Path, default=Path('artifacts/inputs'))
+    args = parser.parse_args()
     started = time.monotonic()
     sequence = 'episode_000000'
     dataset = Track1Dataset('data/official/track_1')
@@ -24,7 +28,7 @@ def main():
     depth = cache['depth']
     intrinsics = cache['intrinsics_normalized']
     height, width = depth.shape
-    with h5py.File(f'artifacts/inputs/{sequence}_masks_k0.h5') as stream:
+    with h5py.File(args.inputs / f'{sequence}_masks_k0.h5') as stream:
         predicted = stream[f'{sequence}/000000-k0.obj_rend_mask.png'][:] > 0
     mask = cv2.resize(predicted.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST) > 0
     skeleton = skeletonize(mask)
@@ -75,18 +79,18 @@ def main():
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     albedo = np.median(rgb[colored_pixels if colored_pixels.any() else predicted], axis=0).astype(np.uint8)
     mesh.visual.vertex_colors = np.tile(np.r_[albedo, 255], (len(mesh.vertices), 1))
-    output = Path('artifacts/inputs') / f'{sequence}_object.glb'
+    output = args.inputs / f'{sequence}_object.glb'
     mesh.export(output)
     initial_pose = np.eye(4)
     initial_pose[:3, :3] = np.column_stack([first_axis, second_axis, normal])
     initial_pose[:3, 3] = center
-    np.save('artifacts/inputs/episode_000000_initial_object_pose.npy', initial_pose)
+    np.save(args.inputs / 'episode_000000_initial_object_pose.npy', initial_pose)
     angles = np.linspace(0, 2 * np.pi, 160)
     circle = center + radius * (np.cos(angles)[:, None] * first_axis + np.sin(angles)[:, None] * second_axis)
     uv = circle[:, :2] / circle[:, 2:] * np.array([intrinsics[0, 0], intrinsics[1, 1]]) + intrinsics[:2, 2]
     uv *= np.array([bgr.shape[1], bgr.shape[0]])
     cv2.polylines(bgr, [np.round(uv).astype(np.int32)], True, (0, 0, 255), 2)
-    cv2.imwrite('artifacts/inputs/episode_000000_mesh_reprojection.jpg', bgr)
+    cv2.imwrite(str(args.inputs / 'episode_000000_mesh_reprojection.jpg'), bgr)
     result = {'source': 'Track 1 RGB, predicted SAM2 mask and predicted MoGe depth at frame 0',
               'method': 'Robust circle fit in the estimated ring plane, with tube thickness from the predicted silhouette',
               'major_radius_m': radius, 'minor_radius_m': tube_radius, 'circle_rms_m': residual,
@@ -95,7 +99,7 @@ def main():
               'observed_points': len(points), 'vertices': len(mesh.vertices), 'faces': len(mesh.faces),
               'watertight': bool(mesh.is_watertight), 'seconds': time.monotonic() - started, 'gpu_memory_mib': 0,
               'limitations': 'Category-specific circular shape prior; metric scale comes from monocular depth and remains uncertain. No held-out GT, Track 2 asset, human reconstruction or full trajectory used.'}
-    Path('artifacts/inputs/episode_000000_mesh_report.json').write_text(json.dumps(result, indent=2))
+    (args.inputs / 'episode_000000_mesh_report.json').write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
 
 

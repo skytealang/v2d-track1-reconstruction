@@ -18,12 +18,13 @@ from v2d_challenge.dataset import Track1Dataset
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--episode', type=int, required=True)
+    parser.add_argument('--inputs', type=Path, default=Path('artifacts/inputs'))
     args = parser.parse_args()
     started = time.monotonic()
     sequence = f'episode_{args.episode:06d}'
     cache = np.load(f'artifacts/moge2/{sequence}/000000.npz')
     intrinsics = cache['intrinsics_normalized']
-    with h5py.File(f'artifacts/inputs/{sequence}_masks_k0.h5') as masks:
+    with h5py.File(args.inputs / f'{sequence}_masks_k0.h5') as masks:
         full_mask = masks[f'{sequence}/000000-k0.obj_rend_mask.png'][:] > 0
     depth = cache['depth']
     mask = cv2.resize(full_mask.astype(np.uint8), (depth.shape[1], depth.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
@@ -78,17 +79,17 @@ def main():
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     color = np.median(rgb[full_mask], axis=0).astype(np.uint8)
     mesh.visual.vertex_colors = np.tile(np.r_[color, 255], (len(mesh.vertices), 1))
-    mesh.export(f'artifacts/inputs/{sequence}_object.glb')
+    mesh.export(args.inputs / f'{sequence}_object.glb')
     pose = np.eye(4)
     pose[:3, 3] = center
-    np.save(f'artifacts/inputs/{sequence}_initial_object_pose.npy', pose)
+    np.save(args.inputs / f'{sequence}_initial_object_pose.npy', pose)
     report = {'episode': args.episode, 'vertices': len(mesh.vertices), 'faces': len(mesh.faces),
               'watertight': bool(mesh.is_watertight), 'surface_resolution': [width, height],
               'thickness_m': thickness, 'seconds': time.monotonic() - started,
               'gpu_memory_mib': 0, 'source': 'Track 1 frame 0 RGB, predicted SAM2 mask and MoGe depth',
               'method': 'Visible depth surface with silhouette-preserving extrusion and marching cubes',
               'limitations': 'Single-view 2.5D approximation. The unseen back surface and thickness are heuristic; no full object shape or metric accuracy is guaranteed.'}
-    Path(f'artifacts/inputs/{sequence}_mesh_report.json').write_text(json.dumps(report, indent=2))
+    (args.inputs / f'{sequence}_mesh_report.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report), flush=True)
 
 
