@@ -15,6 +15,7 @@ JOINTS = [('l_uparm', 11), ('r_uparm', 12), ('l_lowarm', 13), ('r_lowarm', 14),
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--episode', type=int, default=0)
     parser.add_argument('--max-frames', type=int, default=16)
     parser.add_argument('--steps', type=int, default=300)
     parser.add_argument('--batch-size', type=int, default=32)
@@ -23,14 +24,23 @@ def main():
     args = parser.parse_args()
     started = time.monotonic()
     args.output.mkdir(parents=True, exist_ok=True)
-    source = np.load('artifacts/pose_landmarks/episode_000000/landmarks.npz')
+    sequence = f'episode_{args.episode:06d}'
+    source = np.load(f'artifacts/pose_landmarks/{sequence}/landmarks.npz')
     limit = min(len(source['image']), args.max_frames) if args.max_frames else len(source['image'])
     image = source['image'][:limit]
     world = source['world'][:limit]
     image = np.concatenate([image, image[:, [7, 8]].mean(axis=1, keepdims=True)], axis=1)
     world = np.concatenate([world, world[:, [7, 8]].mean(axis=1, keepdims=True)], axis=1)
-    if not np.isfinite(image).all() or not np.isfinite(world).all():
-        raise ValueError('Missing detections require explicit confidence-aware interpolation before fitting')
+    detected = np.isfinite(image[:, 0, 0]) & np.isfinite(world[:, 0, 0])
+    if detected.sum() < 2:
+        raise ValueError('Insufficient human detections for fitting')
+    missing_count = int((~detected).sum())
+    for values in [image, world]:
+        for joint in range(values.shape[1]):
+            for coordinate in range(3):
+                valid = np.isfinite(values[:, joint, coordinate])
+                values[:, joint, coordinate] = np.interp(np.arange(limit), np.where(valid)[0], values[valid, joint, coordinate])
+        values[~detected, :, 3] = 0
     model = torch.jit.load('checkpoints/mhr/mhr_model.pt', map_location='cuda').eval()
     character = model.character_torch
     names = character.skeleton.joint_names
@@ -40,7 +50,7 @@ def main():
     roots = []
     intrinsics = []
     for frame in range(limit):
-        with np.load(f'artifacts/moge2/episode_000000/{frame:06d}.npz') as cache:
+        with np.load(f'artifacts/moge2/{sequence}/{frame:06d}.npz') as cache:
             depth = cache['depth']
             intrinsic = cache['intrinsics_normalized']
             hip = image[frame, [23, 24], :2].mean(axis=0)
@@ -99,7 +109,7 @@ def main():
     parameters = torch.cat(fitted)
     np.savez_compressed(args.output / 'human_params.npz', pose=parameters[:, :136].cpu().numpy(),
                         scales=np.zeros(68, np.float32), shape=np.zeros(45, np.float32))
-    capture = cv2.VideoCapture('artifacts/inputs/episode_000000.0.color.mp4')
+    capture = cv2.VideoCapture(f'artifacts/inputs/{sequence}.0.color.mp4')
     for frame in sorted(set([0, min(100, limit - 1), min(300, limit - 1), min(500, limit - 1), limit - 1])):
         with torch.no_grad():
             vertices, _ = model(torch.zeros((1, 45), device='cuda'), parameters[frame:frame + 1], torch.zeros((1, 72), device='cuda'), True)
@@ -117,6 +127,7 @@ def main():
     capture.release()
     torch.cuda.synchronize()
     report = {'frames': limit, 'seconds': time.monotonic() - started, 'steps_per_batch': args.steps,
+              'episode': args.episode, 'interpolated_detection_frames': missing_count,
               'joint_correspondences': correspondences,
               'peak_allocated_mib': torch.cuda.max_memory_allocated() / 2**20,
               'mean_predicted_landmark_residual_m': float(np.mean(errors)),

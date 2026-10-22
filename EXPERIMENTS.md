@@ -38,6 +38,12 @@
 
 ## 凭据配置后的实际进展
 
+公开全量版：`scripts/run_public_batch.py` 使用 GPU 0、1、2、3、4、5、7，按序列隔离日志，并支持按完成报告接续。启动命令 `.envs/v2d/bin/python -u scripts/run_public_batch.py > logs/public-batch-all.log 2>&1`。不调用 CARI4D、SAM 3D Body 或 SAM 3D Objects 权重。
+
+非呼啦圈 smoke：`.envs/v2d/bin/python scripts/run_public_batch.py --episodes 3 --gpus 0 --smoke`，总计50.612秒；16帧深度、SAM2、红碗可见表面网格、裁剪后人体关键点、公开MHR拟合及FoundationPose均实际运行。网格1752顶点/3500面且闭合；MHR拟合11.792秒、峰值687.94MiB；FoundationPose3.725秒、峰值5695.62MiB，预测掩码IoU0.3380。形状背面和厚度为启发式补全，不能将这些预测一致性指标视为GT精度。
+
+全量产物组装后使用 `scripts/audit_predictions.py` 检查30段帧数、数组有限值、旋转与网格，再通过 `scripts/pack_public_candidate.py --commit <实际URL>` 调用官方打包器。尚未获得完整重建时不上传；不使用虚构GitHub URL。
+
 | 阶段 | 实际命令 | 产物与结果 | 耗时 | 峰值分配显存 |
 |---|---|---|---|---|
 | 原生环境 | 安装官方 Dockerfile 对应依赖、编译 PyTorch3D / nvdiffrast / FoundationPose / SAM2 | `.envs/cari4d`，安装日志在 `logs/*build*`、`logs/cari4d-native-dependencies.log`；FoundationPose 真实注册/跟踪验证通过 | 多步安装，未统一计时 | 编译未统一采样 |

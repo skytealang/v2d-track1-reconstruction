@@ -22,6 +22,7 @@ from v2d.mesh.lib.mesh import Mesh
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--episode', type=int, default=0)
     parser.add_argument('--max-frames', type=int, default=16)
     parser.add_argument('--recover-iou', type=float, default=0.0)
     parser.add_argument('--output', type=Path, default=Path('artifacts/object_pose_smoke'))
@@ -29,7 +30,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     torch.cuda.reset_peak_memory_stats()
-    sequence = 'episode_000000'
+    sequence = f'episode_{args.episode:06d}'
     inputs = Path('artifacts/inputs')
     mesh = Mesh.load(str(inputs / f'{sequence}_object.glb'), force_mesh=True)
     tracker = FoundationPoseTracker(mesh, 'checkpoints/cari4d/foundationpose', backend='nvlabs_pytorch')
@@ -64,7 +65,7 @@ def main():
             poses.append(matrix)
             iou = tracker._mask_iou(mask, intrinsics, pose)
             recovered = False
-            if frame > 0 and iou < args.recover_iou:
+            if frame > 0 and iou < args.recover_iou and np.count_nonzero(mask.mask) >= 16:
                 candidate = tracker.register(rgb, depth_image, mask, intrinsics, iteration=3)
                 candidate_iou = tracker._mask_iou(mask, intrinsics, candidate)
                 if candidate_iou > iou:
@@ -90,12 +91,13 @@ def main():
     capture.release()
     np.save(args.output / 'poses.npy', np.asarray(poses))
     report = {'frames': len(poses), 'complete_video': len(poses) == count, 'seconds': time.monotonic() - started,
+              'episode': args.episode,
               'peak_allocated_mib': torch.cuda.max_memory_allocated() / 2**20,
               'peak_reserved_mib': torch.cuda.max_memory_reserved() / 2**20,
               'backend': tracker.runtime_info, 'register_iterations': 3, 'track_iterations': 2,
               'recover_iou': args.recover_iou,
               'observations': observations, 'mean_silhouette_iou': float(np.mean([row['silhouette_iou'] for row in observations])),
-              'limitations': 'Predicted monocular depth and category-specific reconstructed mesh; no GT accuracy measured. Circular hoop has rotational ambiguity.'}
+              'limitations': 'Predicted monocular depth and reconstructed approximate mesh; no GT accuracy measured. Symmetric shapes have rotational ambiguity.'}
     (args.output / 'run.json').write_text(json.dumps(report, indent=2))
     print(json.dumps({key: value for key, value in report.items() if key != 'observations'}), flush=True)
 

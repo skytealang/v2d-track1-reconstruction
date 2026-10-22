@@ -14,9 +14,10 @@
 - SAM2.1 Small 已完成首段全部 790 帧人体/物体掩码，58.512 秒，峰值分配显存 708.48MiB。呼啦圈网格从首帧 RGB、预测掩码和预测深度拟合，无 Track 2 输入。
 - FoundationPose 完成首段 790 帧物体 6DoF 跟踪；基础版本出现漂移，加入轮廓低重合重新定位后，预测掩码平均 IoU 从 0.1252 升至 0.2502，59.061 秒，峰值分配 5700.32MiB。该 IoU 不是官方指标，也不证明真实位姿准确。
 - 公共 MediaPipe Pose Heavy 在 CPU 上完成首段 790/790 帧关键点检测，87.271 秒。公开 MHR 的首版全段拟合已完成，217.391 秒、峰值 689.45MiB；已组装 `artifacts/episodes/episode_000000.npz` 和物体网格，通过字段、帧数、有限值、旋转及网格检查。人体外观仍有明显偏差，正在修正头部约束。
-- 本地 HF/Kaggle 凭据均可用，Kaggle 五个比赛的入赛检查全部通过。HF 官方 API 返回 Body/Objects 申请被作者拒绝、CARI4D 未获授权；不能以配置 Token 代替模型许可。
+- 本地 HF/Kaggle 凭据均可用，Kaggle 五个比赛的入赛检查全部通过。CARI4D 后续已获授权，Body/Objects 仍被拒绝；当前公开版不依赖这三个模型的权重。
 - 已运行独立合成轨迹的时序/接触对照实验。它不使用比赛真值，也不构成官方验证成绩。
 - **已有首段公开模型备选的人体 MHR、物体网格与轨迹；尚未完成官方 CARI4D 或全部30段，尚无完整提交文件、Kaggle 成绩或排名。**
+- 全量公开版正在七卡批处理 episode 1–29，运行与接续命令见“原生运行与公开模型备选”。代码仓库：https://github.com/skytealang/v2d-track1-reconstruction 。最终提交使用实际推送的代码 commit URL。
 
 ## 实际环境
 
@@ -98,6 +99,21 @@ CUDA_VISIBLE_DEVICES=0 .envs/v2d/bin/python scripts/run_moge.py --episode 0
 凭据不能写入代码、日志或聊天。`scripts/check_readiness.py` 只记录存在性，不输出凭据内容。最新 Kaggle entry check 已确认五个比赛均已入赛。自动化无法取得模型方尚未批准的许可。
 
 ## 原生运行与公开模型备选
+
+当前主线优先使用不依赖受限 Meta 权重的公开批处理：
+
+```bash
+.envs/pose/bin/python -m pip install h5py==3.14.0
+.envs/v2d/bin/python scripts/run_public_batch.py --episodes 3 --gpus 0 --smoke
+.envs/v2d/bin/python scripts/run_public_batch.py
+.envs/v2d/bin/python scripts/pack_public_candidate.py
+```
+
+批处理默认在 GPU 0、1、2、3、4、5、7 上处理 episode 1–29，保留已完成的 episode 0，避开 GPU 6。`configs/public_baseline_prompts.json` 中的提示来自官方 Track 1 首帧 RGB，512×384 预览坐标按比例映射回原始图像。每段顺序运行 MoGe、SAM2、可见表面网格、目标人体裁剪后的 MediaPipe、公开 MHR 拟合、FoundationPose 和时序组装。完成阶段按报告跳过，失败段写入 `artifacts/public_batch_status.json`，可用 `--episodes ID ...` 接续；更改配置或提示后应清理对应的下游阶段报告再重跑。
+
+呼啦圈首段保留已验证的圆环先验重建。其余序列的首版网格通过分割轮廓与预测深度构建可见表面，再沿视线方向做有限厚度补全；这是基于观测的 2.5D 近似，背面、凹陷和遮挡部分可能严重失真。它不使用受限单图重建模型、扫描资产或 Track 2 真值。第一版优先覆盖全部序列，不代表具有竞争力的形状精度。
+
+`pack_public_candidate.py` 复用官方打包器的网格预算和数组检查。没有 GitHub commit URL 时，只生成 `artifacts/submissions/track1_candidate_not_for_upload.parquet`，刻意省略 `code_commit_url`，用于本地检查，**不能上传**。获得真实远程 commit URL 后，传入 `--commit URL`，调用官方原始写入器生成完整文件，随后必须执行官方 uploader 的 dry-run。没有伪造仓库地址。
 
 主推理 conda 环境为项目目录下的 `.envs/cari4d`；轻量环境为 `.envs/v2d`。可用 `conda activate "$PWD/.envs/cari4d"`，也可直接调用环境内 Python，不需要激活。
 
