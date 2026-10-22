@@ -78,3 +78,7 @@
 - 闭合表面的二次简化可能产生孔洞：episode9从24912面简化至3500面后不再闭合。现在在简化破坏封闭性或超过预算时，逐步降低轮廓采样分辨率并重新构建表面，直到同时满足闭合与3500面预算。episode9/11/19真实输入重建通过，分别0.376/0.639/0.260秒，均为CPU，1758/1752/1752顶点、3500面。产物在 `artifacts/inputs/episode_XXXXXX_object.glb`。
 - 批处理可通过 `--status-file` 隔离并行重试记录；重跑保留上一版阶段日志。恢复命令：`.envs/v2d/bin/python -u scripts/run_public_batch.py --episodes 9 11 19 --gpus 2 3 4 --status-file artifacts/public_mesh_retry_status.json`。
 - 修复后17项现有测试通过（0.39秒）；还需完成全部序列及官方提交文件检查。此处仍无Kaggle分数。
+
+首段头部约束全量对照已实际运行：`CUDA_VISIBLE_DEVICES=1 OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 .envs/cari4d/bin/python -u scripts/fit_mhr_landmarks.py --episode 0 --max-frames 0 --steps 200 --batch-size 64 --fit-head --output artifacts/public_human/episode_000000`。790帧、82.522秒、峰值690.99MiB；预览在 `artifacts/public_run_summary/episode0_head_comparison.jpg`。它与原版的迭代数/批大小/对应关节集合不同，无法归因头部约束的独立效果，未替换首段已组装版本；没有宣称质量提升。
+
+新增 `scripts/setup_pose.sh` 将Pose依赖安装到独立venv并执行pip check，已在现有环境实际运行通过，日志 `logs/setup-pose-reproducibility.log`；尚未声称全新机器复装验收。`scripts/summarize_public_run.py` 根据真实逐阶段JSON生成 `artifacts/public_run_summary/stages.csv`、`summary.json` 及物体首末帧拼图；阶段时长相加不是多卡并发墙钟时长。可视化仍显示若干类别的明显漂移、形状变形，低IoU列表只作为后续排查线索，不作为官方准确率。

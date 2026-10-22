@@ -14,6 +14,7 @@ __pycache__/
 .huggingface/
 .hf_home/
 .netrc
+.git-credentials
 access_token
 credentials.json
 *.pem
@@ -25,7 +26,12 @@ credentials.json
 *.onnx
 *.tflite
 *.npz
+*.npy
 *.h5
+*.hdf5
+*.glb
+*.ply
+*.stl
 *.parquet
 *.mp4
 *.zip

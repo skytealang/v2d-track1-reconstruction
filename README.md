@@ -21,7 +21,7 @@
 
 ## 实际环境
 
-工具执行环境实际为 Ubuntu 22.04，而非环境描述中的 PowerShell。检测到 8×RTX 3090（每卡 24GiB）、驱动 570.211.01、CUDA toolkit 12.8、约 251GiB 内存、数据盘约 2.6TiB 可用。GPU 6 上已有其他任务，本项目使用 GPU 0。未找到 Docker 命令或 socket；官方容器构建已实际尝试并报 `FileNotFoundError: docker`。
+工具执行环境实际为 Ubuntu 22.04，而非环境描述中的 PowerShell。检测到 8×RTX 3090（每卡 24GiB）、驱动 570.211.01、CUDA toolkit 12.8、约 251GiB 内存、数据盘初始约 2.6TiB 可用。GPU 6 上已有其他任务，本项目首段使用 GPU 0，全量使用 GPU 0、1、2、3、4、5、7。未找到 Docker 命令或 socket；官方容器构建已实际尝试并报 `FileNotFoundError: docker`。
 
 ## 官方要求
 
@@ -103,17 +103,34 @@ CUDA_VISIBLE_DEVICES=0 .envs/v2d/bin/python scripts/run_moge.py --episode 0
 当前主线优先使用不依赖受限 Meta 权重的公开批处理：
 
 ```bash
-.envs/pose/bin/python -m pip install h5py==3.14.0
+bash scripts/bootstrap.sh
+bash scripts/setup_native.sh
+bash scripts/setup_pose.sh
 .envs/v2d/bin/python scripts/run_public_batch.py --episodes 3 --gpus 0 --smoke
 .envs/v2d/bin/python scripts/run_public_batch.py
 .envs/v2d/bin/python scripts/pack_public_candidate.py
+.envs/v2d/bin/python scripts/summarize_public_run.py
 ```
 
 批处理默认在 GPU 0、1、2、3、4、5、7 上处理 episode 1–29，保留已完成的 episode 0，避开 GPU 6。`configs/public_baseline_prompts.json` 中的提示来自官方 Track 1 首帧 RGB，512×384 预览坐标按比例映射回原始图像。每段顺序运行 MoGe、SAM2、可见表面网格、目标人体裁剪后的 MediaPipe、公开 MHR 拟合、FoundationPose 和时序组装。完成阶段按报告跳过，失败段写入 `artifacts/public_batch_status.json`，可用 `--episodes ID ...` 接续；更改配置或提示后应清理对应的下游阶段报告再重跑。
 
+`--status-file artifacts/retry_status.json` 可为重试指定独立状态文件；旧阶段日志会保留为 `*.previous-*.log`。物体遮挡恢复会拒绝无效重新注册，跟踪无效时保留上一有效姿态并降低置信度，默认恢复间隔10帧。网格简化破坏封闭性时自动降低观测表面的采样分辨率并重新生成，要求闭合且不超过3500面。`summarize_public_run.py` 输出阶段耗时/显存CSV、预测轮廓低重合列表以及首末帧投影拼图到 `artifacts/public_run_summary/`；这些是运行与预测一致性检查，不是GT评测。
+
 呼啦圈首段保留已验证的圆环先验重建。其余序列的首版网格通过分割轮廓与预测深度构建可见表面，再沿视线方向做有限厚度补全；这是基于观测的 2.5D 近似，背面、凹陷和遮挡部分可能严重失真。它不使用受限单图重建模型、扫描资产或 Track 2 真值。第一版优先覆盖全部序列，不代表具有竞争力的形状精度。
 
 `pack_public_candidate.py` 复用官方打包器的网格预算和数组检查。没有 GitHub commit URL 时，只生成 `artifacts/submissions/track1_candidate_not_for_upload.parquet`，刻意省略 `code_commit_url`，用于本地检查，**不能上传**。获得真实远程 commit URL 后，传入 `--commit URL`，调用官方原始写入器生成完整文件，随后必须执行官方 uploader 的 dry-run。没有伪造仓库地址。
+
+完整检查和上传命令如下。先确认当前代码已推送到远程，再将该SHA写入提交；每次真实上传使用新的receipt路径，轮询已有receipt不会再次消耗上传配额。网络需要代理时，在服务器本地配置对应环境变量。
+
+```bash
+export V2D_COMMIT_URL="https://github.com/skytealang/v2d-track1-reconstruction/commit/$(git rev-parse HEAD)"
+.envs/v2d/bin/python scripts/audit_predictions.py
+.envs/v2d/bin/python scripts/pack_public_candidate.py --commit "$V2D_COMMIT_URL"
+.envs/v2d/bin/python external/submission_kit/v2d_submission_kit/tools/preflight.py --track track_1
+.envs/v2d/bin/python external/submission_kit/v2d_submission_kit/submit/v2d_submit.py artifacts/submissions/track1.parquet --track track_1 -m "Public-model Track 1 baseline" --dry-run
+.envs/v2d/bin/python external/submission_kit/v2d_submission_kit/submit/v2d_submit.py artifacts/submissions/track1.parquet --track track_1 -m "Public-model Track 1 baseline" --wait --receipt artifacts/submissions/first-public-receipt.json
+.envs/v2d/bin/python external/submission_kit/v2d_submission_kit/submit/v2d_submit.py --track track_1 --poll-receipt artifacts/submissions/first-public-receipt.json
+```
 
 主推理 conda 环境为项目目录下的 `.envs/cari4d`；轻量环境为 `.envs/v2d`。可用 `conda activate "$PWD/.envs/cari4d"`，也可直接调用环境内 Python，不需要激活。
 
