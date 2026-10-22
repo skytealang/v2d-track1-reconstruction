@@ -4,6 +4,16 @@
 
 ## 当前实际状态（2026-10-22，北京时间）
 
+分割质量复核正在使用公开 SAM 2.1 Hiera Large，输出独立保存在 `artifacts/seg_large/masks/`，不会覆盖旧掩码。人工 RGB 关键帧纠错记录在 `configs/seg_large_corrections.json`，实际原分辨率提示在 `artifacts/seg_large/prompts/`。新版预览为 `artifacts/seg_large/episode_XXXXXX_masks_h264.mp4`。新版在用户视频复核前不标为冻结，也不自动触发下游重建。
+
+```bash
+.envs/v2d/bin/python scripts/run_seg_large.py
+CUDA_VISIBLE_DEVICES=0 .envs/cari4d/bin/python scripts/run_masks.py --prompts artifacts/seg_large/prompts/episode_000012.json --checkpoint checkpoints/sam2-large/sam2.1_hiera_large.pt --sam-config configs/sam2.1/sam2.1_hiera_l.yaml --bidirectional --output artifacts/seg_large/masks
+.envs/v2d/bin/python scripts/render_mask_video.py --episode 12 --masks-dir artifacts/seg_large/masks --output artifacts/seg_large/episode_000012_masks_h264.mp4
+```
+
+清理清单 `artifacts/cleanup_manifest.json` 记录删除的过时试跑、失败跟踪和未评分候选；其有用 JSON 报告保留于 `artifacts/retired_reports/`。真实 Kaggle 评分包、最优归档、原视频、深度缓存及旧版掩码/预览保留。
+
 - 已获取官方仓库，版本 `7eb9721088615fe9201634a6be5cf48b049d1090`，并解包、逐文件校验 Submission Kit。
 - 已创建 `.envs/v2d`：Python 3.11、PyTorch 2.5.1 / CUDA 12.4。`pip check` 通过。
 - 已下载并校验全部 67 个 Track 1 文件，共 513,185,564 字节。数据版本 `5f68335f3acc802033d1e80728c1633197521de8`。

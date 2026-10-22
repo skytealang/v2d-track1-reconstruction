@@ -13,11 +13,12 @@ def main():
     parser.add_argument('--episode', type=int, default=0)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--fps', type=float, default=30.0)
+    parser.add_argument('--masks-dir', type=Path, default=Path('artifacts/inputs'))
     args = parser.parse_args()
     sequence = f'episode_{args.episode:06d}'
     root = Path('data/official/track_1')
     video_path = next(root.glob(f'videos/**/{sequence}.mp4'))
-    mask_path = Path('artifacts/inputs') / f'{sequence}_masks_k0.h5'
+    mask_path = args.masks_dir / f'{sequence}_masks_k0.h5'
     output = args.output or Path('artifacts/visualizations') / f'{sequence}_masks_h264.mp4'
     output.parent.mkdir(parents=True, exist_ok=True)
     capture = cv2.VideoCapture(str(video_path))
