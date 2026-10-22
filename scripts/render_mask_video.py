@@ -1,4 +1,6 @@
 import argparse
+import json
+import subprocess
 from pathlib import Path
 
 import cv2
@@ -16,17 +18,21 @@ def main():
     root = Path('data/official/track_1')
     video_path = next(root.glob(f'videos/**/{sequence}.mp4'))
     mask_path = Path('artifacts/inputs') / f'{sequence}_masks_k0.h5'
-    output = args.output or Path('artifacts/visualizations') / f'{sequence}_masks.mp4'
+    output = args.output or Path('artifacts/visualizations') / f'{sequence}_masks_h264.mp4'
     output.parent.mkdir(parents=True, exist_ok=True)
     capture = cv2.VideoCapture(str(video_path))
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
     frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-    writer = cv2.VideoWriter(str(output), cv2.VideoWriter_fourcc(*'mp4v'), args.fps, (width, height))
-    if not writer.isOpened():
-        raise RuntimeError(f'cannot open output video: {output}')
+    if not capture.isOpened() or min(width, height, frame_count) <= 0 or args.fps <= 0:
+        raise ValueError('Invalid video metadata or FPS')
+    command = ['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'rawvideo',
+               '-pix_fmt', 'bgr24', '-s', f'{width}x{height}', '-r', str(args.fps),
+               '-i', 'pipe:0', '-an', '-c:v', 'libx264', '-threads', '4',
+               '-preset', 'fast', '-crf', '20', '-pix_fmt', 'yuv420p',
+               '-movflags', '+faststart', str(output)]
     written = 0
-    with h5py.File(mask_path, 'r') as masks:
+    with subprocess.Popen(command, stdin=subprocess.PIPE) as writer, h5py.File(mask_path, 'r') as masks:
         for frame in range(frame_count):
             ok, bgr = capture.read()
             if not ok:
@@ -49,10 +55,18 @@ def main():
             cv2.drawContours(frame_image, contours, -1, (0, 255, 0), 3)
             cv2.putText(frame_image, f'{sequence}  frame {frame:04d}/{frame_count - 1:04d}', (28, 48), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
             cv2.putText(frame_image, 'green: person   red: object   yellow: overlap', (28, 88), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2, cv2.LINE_AA)
-            writer.write(frame_image)
+            writer.stdin.write(frame_image.tobytes())
             written += 1
+        writer.stdin.close()
+        if writer.wait() != 0:
+            raise RuntimeError(f'H.264 encoding failed: {output}')
     capture.release()
-    writer.release()
+    probe = subprocess.check_output(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                                     '-show_entries', 'stream=codec_name,nb_frames',
+                                     '-of', 'json', str(output)], text=True)
+    stream = json.loads(probe)['streams'][0]
+    if stream['codec_name'] != 'h264' or int(stream['nb_frames']) != frame_count:
+        raise RuntimeError(f'Output codec/frame count check failed: {output}')
     print({'output': str(output), 'frames': written, 'fps': args.fps, 'size_bytes': output.stat().st_size})
 
 
