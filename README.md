@@ -13,11 +13,36 @@
 - 原生重依赖环境 `.envs/cari4d` 已安装，FoundationPose 的 C++/CUDA、PyTorch3D、nvdiffrast 和 SAM2 已实际运行；不依赖 Docker。尚未运行完整 CARI4D。
 - SAM2.1 Small 已完成首段全部 790 帧人体/物体掩码，58.512 秒，峰值分配显存 708.48MiB。呼啦圈网格从首帧 RGB、预测掩码和预测深度拟合，无 Track 2 输入。
 - FoundationPose 完成首段 790 帧物体 6DoF 跟踪；基础版本出现漂移，加入轮廓低重合重新定位后，预测掩码平均 IoU 从 0.1252 升至 0.2502，59.061 秒，峰值分配 5700.32MiB。该 IoU 不是官方指标，也不证明真实位姿准确。
-- 公共 MediaPipe Pose Heavy 在 CPU 上完成首段 790/790 帧关键点检测，87.271 秒。公开 MHR 的首版全段拟合已完成，217.391 秒、峰值 689.45MiB；已组装 `artifacts/episodes/episode_000000.npz` 和物体网格，通过字段、帧数、有限值、旋转及网格检查。人体外观仍有明显偏差，正在修正头部约束。
+- 公共 MediaPipe Pose Heavy 在 CPU 上完成首段 790/790 帧关键点检测，87.271 秒。公开 MHR 的首版全段拟合已完成，217.391 秒、峰值 689.45MiB。人体外观仍有明显偏差；已另存头部约束全量对照，未据此宣称准确率提升。
 - 本地 HF/Kaggle 凭据均可用，Kaggle 五个比赛的入赛检查全部通过。CARI4D 后续已获授权，Body/Objects 仍被拒绝；当前公开版不依赖这三个模型的权重。
 - 已运行独立合成轨迹的时序/接触对照实验。它不使用比赛真值，也不构成官方验证成绩。
-- **已有首段公开模型备选的人体 MHR、物体网格与轨迹；尚未完成官方 CARI4D 或全部30段，尚无完整提交文件、Kaggle 成绩或排名。**
-- 全量公开版正在七卡批处理 episode 1–29，运行与接续命令见“原生运行与公开模型备选”。代码仓库：https://github.com/skytealang/v2d-track1-reconstruction 。最终提交使用实际推送的代码 commit URL。
+- **公开模型备选已完成全部30段、16,563帧人体MHR/物体轨迹，30个物体网格均闭合。官方打包器生成740,780行、10,405,694字节的完整Parquet，首份提交的五项Kaggle评分全部COMPLETE。没有运行完整官方CARI4D。**
+- 产物 `artifacts/episodes/`、审计 `artifacts/prediction_audit.json`、打包 `artifacts/submissions/track1.parquet`。全量原始批处理日志跨度约1723秒，包含历史失败；单独重试后完成覆盖，不能将原始控制器的失败返回码当成最终审计结果。首次正式打包8.558秒，已覆盖全部9,877个计分帧。
+- 代码仓库：https://github.com/skytealang/v2d-track1-reconstruction 。提交所用代码为真实已推送版本 `3619f262ac7d22e64de7d2be93329fa0d375dc00`，Parquet中的commit URL对应此版本。
+
+首份真实公开成绩如下，全部越低越好。receipt：`artifacts/submissions/first-public-receipt.json`，文件SHA256：`5a786ebd9085463bc530bdea0ac220bf1c5e800a83d863649788a29e6fae5c7e`。这些是已验证可评分的初版，CD误差很大，尚未核实综合排名。很低的PEN不能单独证明接触正确，人体/物体分离也可能降低穿透。
+
+| 指标 | Public score | Submission ID |
+|---|---:|---:|
+| CD-H cm | 37.67795 | 57514086 |
+| CD-O cm | 151.42816 | 57514098 |
+| ACC-H cm/frame² | 2.63350 | 57514108 |
+| ACC-O cm/frame² | 0.31251 | 57514113 |
+| PEN cm | 0.01007 | 57514123 |
+
+## 第二版：MHR根平移初始化修复
+
+第一版将MoGe估计的髋部位置直接作为MHR全局平移，但MHR在零全局平移下的髋部中点并不在原点，原生Y约90.558cm；这会使优化从明显偏移的位置开始。现在先根据每个批次的种子姿态计算未平移的髋部中点，再赋值全局平移，使模型髋部在初始化时精确落在预测目标上。MHR平移参数每单位为10cm，初始化同时处理相机坐标翻转。
+
+首段在相同200步、batch64、13个对应关节设置下，预测关键点残差从0.177944m降到0.037573m，归一化重投影残差从0.037735降到0.010152；初始化髋部最大误差4.82e-7m。它们仍不是GT指标。第二版使用独立目录保留首份成绩与产物：
+
+```bash
+.envs/v2d/bin/python scripts/refit_public_humans.py
+.envs/v2d/bin/python scripts/audit_predictions.py --episodes artifacts/episodes_v2
+.envs/v2d/bin/python scripts/pack_public_candidate.py --episodes artifacts/episodes_v2 --commit "$V2D_COMMIT_URL" --output artifacts/submissions/track1_v2.parquet
+```
+
+`refit_public_humans.py` 只重跑MHR拟合和组装，复用Track1预测关键点、深度、物体网格/轨迹；不读取真值。人参数在 `artifacts/public_human_v2/`，状态、命令、时长与显存在 `artifacts/public_human_v2_status.json`。每段初始化误差大于1e-5m会明确失败。第二版正在全量计算，评分前不能宣称官方指标改善。
 
 ## 实际环境
 
@@ -94,7 +119,7 @@ CUDA_VISIBLE_DEVICES=0 .envs/v2d/bin/python scripts/run_moge.py --episode 0
 4. 将原始视频链接/复制为 `artifacts/inputs/episode_000000.0.color.mp4`，掩码命名为 `episode_000000_masks_k0.h5`，重建网格命名为 `episode_000000_object.glb`，运行 `bash scripts/run_cari4d.sh 000000`。该脚本缺输入/运行时会明确失败，不生成替代预测。
 5. 将输出的 MHR 解码网格通过官方 `tools/track1/mesh_to_mhr_params.py` 转为提交参数，检查共享 identity、坐标轴翻转和单位。官方 converter 文档提供 Apache-2.0 的 Meta MHR 公开模型，**不需要使用 SAM3D Body 附带的受限版本**。目前尚未验证真实 CARI4D bundle 到该转换器的集成。
 6. 为全部 30 段生成真实 NPZ 和物体网格后，设置真实 `V2D_COMMIT_URL` 并运行 `bash scripts/pack_track1.sh`。当前打包脚本只封装官方 packer，不补齐预测。
-7. 在服务器安全配置 Kaggle 凭据（`~/.kaggle/access_token`，权限 `600`），浏览器接受五个比赛规则，运行官方 `--check-entry`、`--dry-run` 后上传并保存 receipt。当前没有进行任何上传。
+7. 在服务器安全配置 Kaggle 凭据（`~/.kaggle/access_token`，权限 `600`），浏览器接受五个比赛规则，运行官方 `--check-entry`、`--dry-run` 后上传并保存 receipt。公开备选首份文件已按此流程上传至全部五项并取得评分。
 
 凭据不能写入代码、日志或聊天。`scripts/check_readiness.py` 只记录存在性，不输出凭据内容。最新 Kaggle entry check 已确认五个比赛均已入赛。自动化无法取得模型方尚未批准的许可。
 
@@ -171,7 +196,7 @@ CUDA_VISIBLE_DEVICES=0 .envs/cari4d/bin/python scripts/fit_mhr_landmarks.py --ma
 
 已有权重和环境后，`bash scripts/run_first_public.sh` 顺序执行首段公开流程并保存日志。它会重新计算关键点、人体拟合及物体跟踪；MoGe 复用校验缓存，已有 SAM2 掩码保留。首段 NPZ 检查不等于完整官方 packer/preflight 验收，打包全量提交仍需30段和真实远程 commit URL。
 
-MediaPipe 输出是预测的髋部中心关键点，不是场景标定人体网格。备选拟合使用公开 Apache-2.0 MHR、MediaPipe 的 2D/3D 关键点与预测 MoGe 髋部深度；不读取受限 SAM 模型，也不使用 Track 2。其人体形状、手指、接触与遮挡稳定性尚需验证。当前只针对首段建立真实可运行流程，不应据此宣称全部序列可提交。
+MediaPipe 输出是预测的髋部中心关键点，不是场景标定人体网格。备选拟合使用公开 Apache-2.0 MHR、MediaPipe 的 2D/3D 关键点与预测 MoGe 髋部深度；不读取受限 SAM 模型，也不使用 Track 2。全量结构与打包已验证，其人体形状、手指、接触与遮挡准确率仍需实际评分。可视化显示部分物体明显漂移、2.5D网格失真；低预测掩码IoU只用于定位问题，不代表GT指标。
 
 ## 本地优化实验
 

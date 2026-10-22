@@ -74,14 +74,22 @@ def main():
     errors = []
     projection_errors = []
     bounds = character.parameter_limits
+    hip_indices = [names.index('l_upleg'), names.index('r_upleg')]
+    initial_hip_errors = []
     for start in range(0, limit, args.batch_size):
         stop = min(start + args.batch_size, limit)
         count = stop - start
         parameters = torch.zeros((count, 68), device='cuda', requires_grad=True)
         with torch.no_grad():
-            parameters[:, :3] = torch.tensor(np.asarray(roots[start:stop]), device='cuda') * flip * 10
             if fitted:
                 parameters[:, 3:] = fitted[-1][-1, 3:68]
+            initial_full = torch.cat([parameters, torch.zeros((count, 181), device='cuda')], dim=1)
+            initial_skeleton = character.joint_parameters_to_skeleton_state(character.model_parameters_to_joint_parameters(initial_full))
+            initial_hips_native = initial_skeleton[:, hip_indices, :3].mean(dim=1)
+            target_hips = torch.tensor(np.asarray(roots[start:stop]), device='cuda', dtype=torch.float32)
+            parameters[:, :3] = (target_hips * flip * 100 - initial_hips_native) / 10
+            initialized_hips = (initial_hips_native + parameters[:, :3] * 10) / 100 * flip
+            initial_hip_errors.extend(torch.linalg.vector_norm(initialized_hips - target_hips, dim=-1).cpu().tolist())
         optimizer = torch.optim.Adam([parameters], lr=0.035)
         for step in range(args.steps):
             full = torch.cat([parameters, torch.zeros((count, 181), device='cuda')], dim=1)
@@ -128,6 +136,8 @@ def main():
     torch.cuda.synchronize()
     report = {'frames': limit, 'seconds': time.monotonic() - started, 'steps_per_batch': args.steps,
               'episode': args.episode, 'interpolated_detection_frames': missing_count,
+              'root_initialization': 'Subtract untranslated MHR hip midpoint, including the seed rotation, before assigning global translation',
+              'max_initial_hip_residual_m': float(max(initial_hip_errors)),
               'joint_correspondences': correspondences,
               'peak_allocated_mib': torch.cuda.max_memory_allocated() / 2**20,
               'mean_predicted_landmark_residual_m': float(np.mean(errors)),

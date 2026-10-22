@@ -1,6 +1,6 @@
 # 实验与工程记录
 
-日期：2026-10-22（Asia/Shanghai）。这些记录没有 Kaggle 分数。
+日期：2026-10-22（Asia/Shanghai）。早期阶段记录没有Kaggle分数；全量提交后的真实评分见后文。
 
 | 阶段 | 实际命令 | 结果/产物 | 耗时 | 显存 | 后续 |
 |---|---|---|---|---|---|
@@ -82,3 +82,34 @@
 首段头部约束全量对照已实际运行：`CUDA_VISIBLE_DEVICES=1 OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 OPENBLAS_NUM_THREADS=2 .envs/cari4d/bin/python -u scripts/fit_mhr_landmarks.py --episode 0 --max-frames 0 --steps 200 --batch-size 64 --fit-head --output artifacts/public_human/episode_000000`。790帧、82.522秒、峰值690.99MiB；预览在 `artifacts/public_run_summary/episode0_head_comparison.jpg`。它与原版的迭代数/批大小/对应关节集合不同，无法归因头部约束的独立效果，未替换首段已组装版本；没有宣称质量提升。
 
 新增 `scripts/setup_pose.sh` 将Pose依赖安装到独立venv并执行pip check，已在现有环境实际运行通过，日志 `logs/setup-pose-reproducibility.log`；尚未声称全新机器复装验收。`scripts/summarize_public_run.py` 根据真实逐阶段JSON生成 `artifacts/public_run_summary/stages.csv`、`summary.json` 及物体首末帧拼图；阶段时长相加不是多卡并发墙钟时长。可视化仍显示若干类别的明显漂移、形状变形，低IoU列表只作为后续排查线索，不作为官方准确率。
+
+## 首份全量Kaggle提交
+
+30段、16,563帧全部组装，9,877个计分帧覆盖；30个输入网格均闭合。原始主批处理日志出生/末次修改时间差1723秒（`stat`），包括失败的尝试；控制器保留历史失败，因此返回2，独立重试完成后以全量审计与官方打包结果为准。episode10的早期网格7520面，虽然闭合但官方简化无法满足4096面预算。重新采样成3500面并重新跟踪/组装，重跑60.749秒，报告 `artifacts/public_budget_retry_status.json`；没有修改官方打包器。
+
+| 阶段 | 命令/记录 | 真实结果与产物 | 用时/峰值 |
+|---|---|---|---|
+| 全量审计 | `.envs/v2d/bin/python scripts/audit_predictions.py` | `artifacts/prediction_audit.json`，30/30、16563帧、有限值/旋转通过、30个闭合网格 | CPU；未单独记录墙钟 |
+| 正式打包 | `.envs/v2d/bin/python scripts/pack_public_candidate.py --commit https://github.com/skytealang/v2d-track1-reconstruction/commit/3619f262ac7d22e64de7d2be93329fa0d375dc00` | `artifacts/submissions/track1.parquet`，740780行，10405694B，官方检查通过 | 8.558秒，CPU |
+| 官方dry-run | `v2d_submit.py artifacts/submissions/track1.parquet --track track_1 -m "Public-model Track 1 baseline 3619f26" --dry-run` | `logs/submission-public-first-dry-run.log`，身份/规则/格式通过，各项5次剩余 | 未单独计时，CPU |
+| 真实上传/等待 | 同文件使用 `--wait --receipt artifacts/submissions/first-public-receipt.json` | 五项全部COMPLETE，无评分错误 | 网络及Kaggle服务端耗时；本地CPU |
+
+成功阶段报告的累计用时（不是并发墙钟）：深度2452.113秒、分割1588.874秒、网格8.167秒、关键点2103.785秒、MHR1943.780秒、物体1840.046秒、组装0.642秒；峰值分配显存分别2256.45、708.48、0、CPU、691.07、5701.03、0MiB。统计只包含最新成功阶段，不含失败重试的全部成本。详细记录 `artifacts/public_run_summary/stages.csv`。
+
+| 指标 | Public score | Submission ID | 状态 |
+|---|---:|---:|---|
+| CD-H cm | 37.67795 | 57514086 | COMPLETE |
+| CD-O cm | 151.42816 | 57514098 | COMPLETE |
+| ACC-H cm/frame² | 2.63350 | 57514108 | COMPLETE |
+| ACC-O cm/frame² | 0.31251 | 57514113 | COMPLETE |
+| PEN cm | 0.01007 | 57514123 | COMPLETE |
+
+分数证明提交链路已打通，不代表重建精度足够。CD-O尤其差；低PEN不能区分真实接触与人/物分离，不能据此宣称接触优化成功。首份Parquet与receipt保留不覆盖，后续候选另存。尚未核实综合排名。
+
+## MHR根平移初始化修复对照
+
+直接运行公开MHR前向确认：零全局平移时，左右髋部原生坐标分别为 `[8.20465,90.55811,0.53257]` 与 `[-8.20465,90.55811,0.53257]` cm；全局Y平移参数增加1时，所有关节增加10cm。原有初始化没有减去这个髋部偏移。修复先对当前种子姿态做骨架前向，扣除未平移的髋部中点后再设置全局平移，涵盖批次种子旋转。
+
+同设置首段对照：均790帧、200步、batch64、13个对应关节；修复前 `artifacts/public_human/episode_000000/run.json`，修复后 `artifacts/public_human_v2/episode_000000/run.json`。预测3D关节平均残差0.1779439→0.0375731m，归一化2D重投影残差0.0377352→0.0101523；初始化髋部最大误差4.8147e-7m。修复后85.811秒、峰值690.85MiB。真实对照图 `artifacts/public_run_summary/episode0_root_fix_comparison.jpg`。这些残差只表明与同一组预测观测更一致，尚不能代替Kaggle准确率。
+
+全量命令 `.envs/v2d/bin/python -u scripts/refit_public_humans.py > logs/public-human-v2-all.log 2>&1`，使用GPU0/1/2/3/4/5/7，复用物体结果，在 `artifacts/episodes_v2/` 组装，不覆盖初版。状态 `artifacts/public_human_v2_status.json` 逐段记录初始化检查、真实命令、时长、峰值。修复后现有17项测试通过（0.35秒）；全量和第二份评分进行中。
