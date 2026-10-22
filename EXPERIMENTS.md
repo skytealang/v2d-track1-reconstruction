@@ -68,4 +68,13 @@
 
 ## 当前必须解决的输入
 
-获批 CARI4D / SAM3D Body 权重或验证公开人体备选；完整视频 MHR 与物体轨迹联合验证；扩展全部30段；真实生产代码 GitHub commit URL。原生运行时、首段预测掩码/网格、Kaggle认证/入赛已完成。公开 Apache-2.0 MHR 模型已下载并校验，它本身不是人体视频估计器。
+完整视频 MHR 与物体轨迹联合验证；扩展全部30段并完成正式打包和Kaggle评分。公开模型主线已实际运行，不依赖SAM3D Body/Objects授权。原生运行时、Kaggle认证/入赛和公开GitHub远程均已完成。
+
+## 全量运行中的恢复修复
+
+代码已实际推送至公开仓库 `https://github.com/skytealang/v2d-track1-reconstruction`，首个全量实现提交 `da8b20d76322b80a5f43b1c92d682b6b40ab5394`。授权使用GitHub CLI设备流程，凭据保存在项目目录之外，未写入仓库。
+
+- 物体严重遮挡时，FoundationPose重新注册可能返回无效矩阵。现在在渲染前检查候选，拒绝无效恢复；跟踪无效时保留上个有效姿态并将该帧置信度置零。默认恢复间隔10帧，避免低轮廓重合时每帧重复注册。episode6/7实际重跑成功，完整816/777帧，包含组装分别耗时163.114/83.283秒。详见 `artifacts/public_retry_status.json` 和逐帧物体报告。遮挡期间保持姿态是一种估计，不是真值恢复。
+- 闭合表面的二次简化可能产生孔洞：episode9从24912面简化至3500面后不再闭合。现在在简化破坏封闭性或超过预算时，逐步降低轮廓采样分辨率并重新构建表面，直到同时满足闭合与3500面预算。episode9/11/19真实输入重建通过，分别0.376/0.639/0.260秒，均为CPU，1758/1752/1752顶点、3500面。产物在 `artifacts/inputs/episode_XXXXXX_object.glb`。
+- 批处理可通过 `--status-file` 隔离并行重试记录；重跑保留上一版阶段日志。恢复命令：`.envs/v2d/bin/python -u scripts/run_public_batch.py --episodes 9 11 19 --gpus 2 3 4 --status-file artifacts/public_mesh_retry_status.json`。
+- 修复后17项现有测试通过（0.39秒）；还需完成全部序列及官方提交文件检查。此处仍无Kaggle分数。

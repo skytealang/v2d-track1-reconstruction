@@ -14,7 +14,7 @@ import h5py
 import numpy as np
 import torch
 
-from v2d.common.datatypes import CameraIntrinsics, DepthImage, Mask
+from v2d.common.datatypes import CameraIntrinsics, DepthImage, Mask, Transform3d
 from v2d.common.datatypes import Image as V2dImage
 from v2d.foundation_pose.lib.foundation_pose_tracker import FoundationPoseTracker
 from v2d.mesh.lib.mesh import Mesh
@@ -25,6 +25,7 @@ def main():
     parser.add_argument('--episode', type=int, default=0)
     parser.add_argument('--max-frames', type=int, default=16)
     parser.add_argument('--recover-iou', type=float, default=0.0)
+    parser.add_argument('--recovery-interval', type=int, default=10)
     parser.add_argument('--output', type=Path, default=Path('artifacts/object_pose_smoke'))
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
@@ -37,6 +38,7 @@ def main():
     capture = cv2.VideoCapture(str(inputs / f'{sequence}.0.color.mp4'))
     poses = []
     observations = []
+    last_recovery_frame = -args.recovery_interval
     with h5py.File(inputs / f'{sequence}_masks_k0.h5') as masks, torch.inference_mode():
         count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
         limit = min(count, args.max_frames) if args.max_frames else count
@@ -60,23 +62,40 @@ def main():
             else:
                 pose = tracker.track_one(rgb, depth_image, intrinsics, iteration=2)
             matrix = pose.to_matrix()
+            held = False
             if not np.isfinite(matrix).all() or matrix[2, 3] <= 0:
-                raise ValueError(f'Invalid pose at frame {frame}')
+                if poses:
+                    matrix = poses[-1].copy()
+                    held = True
+                else:
+                    matrix = np.load(inputs / f'{sequence}_initial_object_pose.npy')
+                if not np.isfinite(matrix).all() or matrix[2, 3] <= 0:
+                    raise ValueError(f'No valid observation-derived initialization at frame {frame}')
+                pose = Transform3d.from_matrix(matrix)
+                tracker.reset_to_pose(pose)
             poses.append(matrix)
             iou = tracker._mask_iou(mask, intrinsics, pose)
+            if held:
+                iou = 0.0
             recovered = False
-            if frame > 0 and iou < args.recover_iou and np.count_nonzero(mask.mask) >= 16:
+            visible_depth = np.count_nonzero(mask.mask & (depth > 0))
+            rejected_recovery = False
+            if frame > 0 and iou < args.recover_iou and visible_depth >= 16 and frame - last_recovery_frame >= args.recovery_interval:
+                last_recovery_frame = frame
                 candidate = tracker.register(rgb, depth_image, mask, intrinsics, iteration=3)
-                candidate_iou = tracker._mask_iou(mask, intrinsics, candidate)
+                candidate_matrix = candidate.to_matrix()
+                candidate_valid = np.isfinite(candidate_matrix).all() and candidate_matrix[2, 3] > 0
+                candidate_iou = tracker._mask_iou(mask, intrinsics, candidate) if candidate_valid else -1.0
                 if candidate_iou > iou:
-                    pose, matrix, iou = candidate, candidate.to_matrix(), candidate_iou
-                    if not np.isfinite(matrix).all() or matrix[2, 3] <= 0:
-                        raise ValueError(f'Invalid recovered pose at frame {frame}')
+                    pose, matrix, iou = candidate, candidate_matrix, candidate_iou
                     poses[-1] = matrix
                     recovered = True
                 else:
                     tracker.reset_to_pose(pose)
-            observations.append({'frame': frame, 'silhouette_iou': iou, 'recovered': recovered})
+                    rejected_recovery = True
+            observations.append({'frame': frame, 'silhouette_iou': iou, 'recovered': recovered,
+                                 'held_last_valid_pose': held, 'rejected_recovery': rejected_recovery,
+                                 'valid_mask_depth_pixels': int(visible_depth)})
             if frame in [0, 100, 300, 500, limit - 1]:
                 camera_points = mesh.to_trimesh().vertices @ matrix[:3, :3].T + matrix[:3, 3]
                 projected = camera_points[:, :2] / camera_points[:, 2:] @ np.diag([intrinsics.fx, intrinsics.fy])
@@ -96,6 +115,7 @@ def main():
               'peak_reserved_mib': torch.cuda.max_memory_reserved() / 2**20,
               'backend': tracker.runtime_info, 'register_iterations': 3, 'track_iterations': 2,
               'recover_iou': args.recover_iou,
+              'recovery_interval': args.recovery_interval,
               'observations': observations, 'mean_silhouette_iou': float(np.mean([row['silhouette_iou'] for row in observations])),
               'limitations': 'Predicted monocular depth and reconstructed approximate mesh; no GT accuracy measured. Symmetric shapes have rotational ambiguity.'}
     (args.output / 'run.json').write_text(json.dumps(report, indent=2))

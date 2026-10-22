@@ -82,7 +82,10 @@ def run_episode(episode, gpu, steps, smoke, status, lock):
             command = [executable, '-u', script, *arguments]
             print(json.dumps({'episode': episode, 'gpu': gpu, 'stage': stage, 'status': 'running'}), flush=True)
             stage_started = time.monotonic()
-            with (log_root / f'{stage}.log').open('w') as log:
+            log_path = log_root / f'{stage}.log'
+            if log_path.exists():
+                log_path.rename(log_path.with_name(f'{stage}.previous-{time.time_ns()}.log'))
+            with log_path.open('w') as log:
                 process = subprocess.run(command, cwd=ROOT, env=environment, stdout=log, stderr=subprocess.STDOUT)
             record['stages'].append({'stage': stage, 'returncode': process.returncode, 'seconds': time.monotonic() - stage_started,
                                      'command': [executable, script, *arguments], 'log': str(log_root / f'{stage}.log')})
@@ -95,7 +98,7 @@ def run_episode(episode, gpu, steps, smoke, status, lock):
     (log_root / 'summary.json').write_text(json.dumps(record, indent=2))
     with lock:
         status['episodes'][str(episode)] = record
-        (ROOT / 'artifacts/public_batch_status.json').write_text(json.dumps(status, indent=2))
+        Path(status['status_file']).write_text(json.dumps(status, indent=2))
     print(json.dumps({'episode': episode, 'complete': record['complete'], 'error': record.get('error'), 'seconds': record['seconds']}), flush=True)
     return record
 
@@ -106,11 +109,13 @@ def main():
     parser.add_argument('--gpus', nargs='+', type=int, default=[0, 1, 2, 3, 4, 5, 7])
     parser.add_argument('--steps', type=int, default=200)
     parser.add_argument('--smoke', action='store_true')
+    parser.add_argument('--status-file', type=Path, default=ROOT / 'artifacts/public_batch_status.json')
     args = parser.parse_args()
     dataset = Track1Dataset(ROOT / 'data/official/track_1')
     prepare_prompts(dataset)
     episodes = args.episodes if args.episodes is not None else list(range(1, 30))
-    status = {'expected': {str(episode): entry['length'] for episode, entry in dataset.episodes.items()}, 'episodes': {}, 'started_at_unix': time.time()}
+    status = {'expected': {str(episode): entry['length'] for episode, entry in dataset.episodes.items()}, 'episodes': {},
+              'started_at_unix': time.time(), 'status_file': str(args.status_file)}
     lock = threading.Lock()
     groups = [episodes[index::len(args.gpus)] for index in range(len(args.gpus))]
     def worker(group, gpu):
@@ -119,7 +124,7 @@ def main():
         futures = [executor.submit(worker, group, gpu) for group, gpu in zip(groups, args.gpus)]
         results = [record for future in concurrent.futures.as_completed(futures) for record in future.result()]
     status['seconds'] = time.time() - status['started_at_unix']
-    (ROOT / 'artifacts/public_batch_status.json').write_text(json.dumps(status, indent=2))
+    args.status_file.write_text(json.dumps(status, indent=2))
     if any(record.get('error') for record in results):
         raise SystemExit(2)
 
