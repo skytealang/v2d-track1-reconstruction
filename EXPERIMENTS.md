@@ -1,5 +1,15 @@
 # 实验与工程记录
 
+## SAM 2.1 Large 分割复核（2026-10-22）
+
+公开 Large 权重下载自 Meta 官方 `https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt`，SHA256 `2647878d5dfa5098f2f8649825738a9345572bae2d4350a2468587ece47dd318`，下载168秒。使用原有首帧提示，在序列6、9、12、13、14、16、18、22、28增加基于可见RGB的人工正负点；9的桌板、28的推车台面在Large首轮仍漏分，补首帧部件提示和中间帧提示后单独重跑。多提示序列同时执行前向/反向传播，按最近提示方向选择输出；没有声称单首帧序列获得了双向收益。
+
+运行入口 `.envs/v2d/bin/python scripts/run_seg_large.py` 可重建提示并以3个进程恢复；本次首次运行实际使用GPU0/1/2/3/4/5/7的shell批处理，命令保存在日志，GPU6未使用。`scripts/run_masks.py --sam-config configs/sam2.1/sam2.1_hiera_l.yaml --checkpoint checkpoints/sam2-large/sam2.1_hiera_large.pt --bidirectional --output artifacts/seg_large/masks` 为逐段核心命令。30段最新成功分割阶段用时合计4052.969秒（并发阶段总和，非墙钟；不含已替代的尝试），峰值PyTorch分配1812.31MiB，nvidia-smi观察约2494MiB。阶段峰值主机内存约56GiB，完成后可用234GiB，未出现OOM。
+
+新版 `artifacts/seg_large/masks/` 包含30段16563帧H5，`artifacts/seg_large/episode_XXXXXX_masks_h264.mp4` 包含全部30段H.264/yuv420p视频，合计270.51MiB。逐段验证提示SHA、编码、视频帧数；`scripts/review_segmentation.py` 检查全部H5键与分辨率，并导出抽帧拼图。完整哈希见 `artifacts/seg_large/video_manifest.json`；抽帧/空掩码诊断见 `review_manifest.json`、`review_notes.json`。4/7/20存在16/55/11帧空物体掩码，抽样RGB显示强人体遮挡，没有虚构不可见分割。所有30段抽帧已检查，完整视频待用户验收，尚未冻结或替换下游缓存。
+
+并发恢复检查曾误触发28段重复写入并破坏临时H5，原子发布的旧完整H5未受影响。已结束重复进程并单独重跑成功，代码改为PID隔离临时文件。现有17项测试通过；新版逻辑还由真实多提示推理、全帧H5检查和视频帧数自检验证。清理过时smoke、失败跟踪、被替代人体拟合和未评分弱候选，累计释放114.19MiB，清单 `artifacts/cleanup_manifest.json`；真实评分包、最优归档、原视频、深度和旧掩码对照保留。没有进行Kaggle上传。
+
 日期：2026-10-22（Asia/Shanghai）。早期阶段记录没有Kaggle分数；全量提交后的真实评分见后文。
 
 | 阶段 | 实际命令 | 结果/产物 | 耗时 | 显存 | 后续 |
