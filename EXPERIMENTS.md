@@ -133,3 +133,9 @@
 | PEN cm | 0.01007 | 0.00941 | 6.55% | 57514536 |
 
 v2在五项测得的公开指标上均优于v1，因此完整归档到 `artifacts/checkpoints/best_public/`，包括30段NPZ/网格/报告、Parquet、打包报告和receipt，93个文件SHA256记录于 `manifest.json`。初版不删除。仍未核实综合排名；物体142.5cm误差说明远未达到高质量重建目标。后续优先研究预测掩码/深度锚定以修复物体漂移、改进完整网格与尺度、人体时序与接触约束。
+
+## 深度/掩码物体平移锚定候选
+
+官方基线快照为 CD-H 15.57527 cm、CD-O 23.16246 cm、ACC-H 1.97387 cm/frame²、ACC-O 0.72622 cm/frame²、PEN 0.00423 cm；公开模型 v2 的 CD-O 为 142.51805 cm，不能视为接近官方基线。为定位物体误差，新增 `scripts/refine_object_pose_anchor.py`：保留 FoundationPose 旋转，用当前帧目标掩码和 MoGe 有效深度的中位数重估物体三维平移，再由 `assemble_episode.py` 的二阶正则抑制抖动。该方法不使用 Track 2 资产或隐藏真值。
+
+`episode_000006` 的同预测掩码投影检查中，原始轨迹 IoU 0.04510，锚定轨迹 IoU 0.12637；锚定+时序组装的二阶差分 RMS 为 0.000187 m/frame²。全量候选 `artifacts/submissions/track1_anchor_candidate.parquet` 已通过 30/30 段、16,563 帧审计和官方打包器，SHA256 为 `caea1e82c115e59df30630449faa888e5db9a96e2a9fae756ed6fd43357de0c8`。这些 IoU 和平滑度是预测内部诊断，不能替代 Kaggle 真值分数；提交前必须绑定新的真实 commit URL 并完成 dry-run。
